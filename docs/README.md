@@ -43,12 +43,14 @@ SYNC_RUN_ON_BOOT=true
    ```
 2. Rode a sincronização localmente:
    ```bash
-   npm run sync
+    cd "/Users/Felipe/Documents/Projetos/Integrações/Notion-ClickUp"
+     npm run sync
    ```
    - Executa uma sincronização única usando o entrypoint `src/api/cron/sync-notion.ts`.
 3. Execute o cron local (opcional):
    ```bash
-   npm run cron:sync
+   cd "/Users/Felipe/Documents/Projetos/Integrações/Notion-ClickUp"
+  npm run cron:sync
    ```
    - Mantém o processo ativo, acionando `runSync` conforme `SYNC_CRON_EXPRESSION` (padrão: a cada 1 min).
    - Respeita `SYNC_TIMEZONE` e evita execuções concorrentes.
@@ -58,6 +60,7 @@ SYNC_RUN_ON_BOOT=true
 ## Configuração do Notion
 - Banco deve expor a propriedade de checkbox **`[➡️ Enviar p/ ClickUp]`** (true → envia).
 - Adicione uma coluna *Rich text* chamada **`ClickUp Task ID`** (sem preencher manualmente). Ela será populada com o ID retornado pelo ClickUp e reutilizada para atualizações.
+- Garanta que existam as colunas **`[Sync Error]`** (Checkbox) e **`[Sync Error Message]`** (Rich text). Não precisa criar manualmente caso não exista: o script valida o schema do banco antes da consulta e cria automaticamente essas propriedades, mas é recomendável posicioná-las manualmente na view para acompanhar falhas.
   - ⚠️ Não utilize tipos `Unique ID`, `Número` ou `Fórmula` para esse campo. Se já existir uma coluna com outro tipo, crie uma nova *Rich text* com o mesmo nome e remova a antiga para evitar duplicações.
 - Coluna de título: `Nome` (PT) ou `Name` (EN).
 - Coluna de projeto (select ou multi-select): `Projetos`, `Projetos do Notion`, `Projeto` ou `Projects`. O primeiro valor será usado para compor o título no formato `Task :: Projeto | Nome`.
@@ -67,6 +70,13 @@ SYNC_RUN_ON_BOOT=true
   - `Deploy` → `deploy`
   - `Concluído` → `done`
   - Demais valores caem no status padrão `in progress`.
+
+### Comportamento em caso de falhas na sync
+- Se ocorrer erro ao criar/atualizar a tarefa no ClickUp, o processo:
+  - Desmarca **`[➡️ Enviar p/ ClickUp]`** para impedir novas tentativas automáticas.
+  - Marca **`[Sync Error]`** como `true`.
+  - Registra em **`[Sync Error Message]`** uma versão truncada (100 caracteres) da mensagem retornada.
+- Corrija a causa da falha (por exemplo, ID inválido no ClickUp) e marque novamente **`[➡️ Enviar p/ ClickUp]`** para reprocessar.
 
 ## Automação (GitHub Actions)
 - Workflow em `.github/workflows/sync.yml`.
