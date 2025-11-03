@@ -29,6 +29,10 @@ NOTION_API_KEY=coloque_sua_chave_aqui
 NOTION_DATABASE_ID=coloque_seu_database_id_aqui
 CLICKUP_API_TOKEN=coloque_seu_token_aqui
 CLICKUP_LIST_ID=coloque_seu_list_id_aqui
+# Opcional: agendador local (cron)
+SYNC_CRON_EXPRESSION=* * * * *
+SYNC_TIMEZONE=America/Sao_Paulo
+SYNC_RUN_ON_BOOT=true
 ```
 
 ## Desenvolvimento
@@ -40,12 +44,13 @@ CLICKUP_LIST_ID=coloque_seu_list_id_aqui
    ```bash
    npm run sync
    ```
+   - Executa uma sincronização única usando o entrypoint `src/api/cron/sync-notion.ts`.
 3. Execute o cron local (opcional):
    ```bash
    npm run cron:sync
    ```
-   - Usa `node-cron` com a expressão de `SYNC_CRON_EXPRESSION`.
-   - Evita execuções concorrentes e registra logs a cada disparo.
+   - Mantém o processo ativo, acionando `runSync` conforme `SYNC_CRON_EXPRESSION` (padrão: a cada 1 min).
+   - Respeita `SYNC_TIMEZONE` e evita execuções concorrentes.
 
 
 ## Configuração do Notion
@@ -53,6 +58,11 @@ CLICKUP_LIST_ID=coloque_seu_list_id_aqui
 - Coluna de título: `Nome` (PT) ou `Name` (EN).
 - Coluna de projeto (select ou multi-select): `Projetos`, `Projetos do Notion`, `Projeto` ou `Projects`. O primeiro valor será usado para compor o título no formato `Task :: Projeto | Nome`.
 - Coluna de responsável pode ser do tipo pessoas ou multi-select com nomes/e-mails. Suportamos chaves: `Dono`, `Donos`, `Owner`, `Responsável`, `Responsaveis`, `Responsáveis`, `Assignee`, `Assignees`. Caso use outro nome/valor, basta incluir no `userMap`.
+- Coluna de status (select/status) chamada `Status`. Valores mapeados:
+  - `QA (WIP 3)` → `qa`
+  - `Deploy` → `deploy`
+  - `Concluído` → `done`
+  - Demais valores caem no status padrão `in progress`.
 
 ## Automação (GitHub Actions)
 - Workflow em `.github/workflows/sync.yml`.

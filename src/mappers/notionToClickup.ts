@@ -4,11 +4,13 @@ import type {
   PageObjectResponse,
   PeoplePropertyValue,
   SelectPropertyValue,
+  StatusPropertyValue,
   TitlePropertyValue,
 } from '@notionhq/client/build/src/api-endpoints';
 import { NOTION_TO_CLICKUP_USER_MAP } from './userMap';
 
 const DEFAULT_TITLE_PREFIX = 'Task ::';
+const DEFAULT_CLICKUP_STATUS = 'in progress';
 
 const PROJECT_PROPERTY_KEYS = [
   'Projetos',
@@ -28,6 +30,14 @@ const OWNER_PROPERTY_KEYS = [
   'Assignees',
 ] as const;
 
+const STATUS_PROPERTY_KEYS = ['Status'] as const;
+
+const STATUS_MAP: Record<string, string> = {
+  'QA (WIP 3)': 'qa',
+  Deploy: 'deploy',
+  'Concluído': 'done',
+};
+
 interface ClickUpTaskPayload {
   name: string;
   status: string;
@@ -37,6 +47,7 @@ interface ClickUpTaskPayload {
 
 type OwnerProperty = PeoplePropertyValue | MultiSelectPropertyValue;
 type ProjectProperty = SelectPropertyValue | MultiSelectPropertyValue;
+type StatusProperty = StatusPropertyValue | SelectPropertyValue;
 
 const isOwnerProperty = (property: unknown): property is OwnerProperty =>
   !!property &&
@@ -51,6 +62,13 @@ const isProjectProperty = (property: unknown): property is ProjectProperty =>
   'type' in property &&
   ((property as SelectPropertyValue).type === 'select' ||
     (property as MultiSelectPropertyValue).type === 'multi_select');
+
+const isStatusProperty = (property: unknown): property is StatusProperty =>
+  !!property &&
+  typeof property === 'object' &&
+  'type' in property &&
+  ((property as StatusPropertyValue).type === 'status' ||
+    (property as SelectPropertyValue).type === 'select');
 
 const resolveClickUpAssignees = (keys: string[]): number[] | undefined => {
   const mappedIds = keys
@@ -167,6 +185,36 @@ const getFormattedTaskName = (
   return `${taskName} | ${originalName}`;
 };
 
+const getClickUpStatus = (page: PageObjectResponse): string => {
+  for (const key of STATUS_PROPERTY_KEYS) {
+    const property = page.properties[key];
+    if (!isStatusProperty(property)) {
+      continue;
+    }
+
+    const statusName =
+      property.type === 'status'
+        ? property.status?.name
+        : property.select?.name;
+
+    if (!statusName) {
+      continue;
+    }
+
+    const mappedStatus = STATUS_MAP[statusName];
+    if (mappedStatus) {
+      return mappedStatus;
+    }
+
+    console.warn(
+      `Status "${statusName}" não mapeado. Usando valor padrão "${DEFAULT_CLICKUP_STATUS}".`,
+    );
+    break;
+  }
+
+  return DEFAULT_CLICKUP_STATUS;
+};
+
 export const mapNotionPageToClickupPayload = (
   page: PageObjectResponse,
 ): ClickUpTaskPayload => {
@@ -202,7 +250,7 @@ export const mapNotionPageToClickupPayload = (
 
   const payload: ClickUpTaskPayload = {
     name: getFormattedTaskName(page, titleProperty),
-    status: 'in progress',
+    status: getClickUpStatus(page),
     priority: 3,
   };
 
