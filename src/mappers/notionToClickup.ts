@@ -30,7 +30,12 @@ const OWNER_PROPERTY_KEYS = [
   'Assignees',
 ] as const;
 
-const STATUS_PROPERTY_KEYS = ['Status'] as const;
+const STATUS_PROPERTY_KEYS = [
+  'Status',
+  'Status Notion',
+  'Status - Notion',
+  'Status (Notion)',
+] as const;
 
 const STATUS_MAP: Record<string, string> = {
   'QA (WIP 3)': 'qa',
@@ -47,7 +52,10 @@ interface ClickUpTaskPayload {
 
 type OwnerProperty = PeoplePropertyValue | MultiSelectPropertyValue;
 type ProjectProperty = SelectPropertyValue | MultiSelectPropertyValue;
-type StatusProperty = StatusPropertyValue | SelectPropertyValue;
+type StatusProperty =
+  | StatusPropertyValue
+  | SelectPropertyValue
+  | MultiSelectPropertyValue;
 
 const isOwnerProperty = (property: unknown): property is OwnerProperty =>
   !!property &&
@@ -68,7 +76,8 @@ const isStatusProperty = (property: unknown): property is StatusProperty =>
   typeof property === 'object' &&
   'type' in property &&
   ((property as StatusPropertyValue).type === 'status' ||
-    (property as SelectPropertyValue).type === 'select');
+    (property as SelectPropertyValue).type === 'select' ||
+    (property as MultiSelectPropertyValue).type === 'multi_select');
 
 const resolveClickUpAssignees = (keys: string[]): number[] | undefined => {
   const mappedIds = keys
@@ -186,6 +195,22 @@ const getFormattedTaskName = (
 };
 
 const getClickUpStatus = (page: PageObjectResponse): string => {
+  const availableStatusKeys = Object.entries(page.properties)
+    .filter(([, prop]) => isStatusProperty(prop))
+    .map(([key]) => key);
+
+  if (availableStatusKeys.length === 0) {
+    console.warn(
+      `Nenhuma propriedade de status identificada na página ${page.id}.` +
+        ' Usando status padrão.',
+    );
+  } else {
+    console.log(
+      `Propriedades de status disponíveis na página ${page.id}:`,
+      availableStatusKeys.join(', '),
+    );
+  }
+
   for (const key of STATUS_PROPERTY_KEYS) {
     const property = page.properties[key];
     if (!isStatusProperty(property)) {
@@ -195,11 +220,17 @@ const getClickUpStatus = (page: PageObjectResponse): string => {
     const statusName =
       property.type === 'status'
         ? property.status?.name
-        : property.select?.name;
+        : property.type === 'select'
+          ? property.select?.name
+          : property.multi_select[0]?.name;
 
     if (!statusName) {
       continue;
     }
+
+    console.log(
+      `Status Notion encontrado (${key}): "${statusName}" para página ${page.id}`,
+    );
 
     const mappedStatus = STATUS_MAP[statusName];
     if (mappedStatus) {
