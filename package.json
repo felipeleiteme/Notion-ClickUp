@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "sync": "tsx src/api/cron/sync-notion.ts",
+    "sync:teams": "tsx src/api/cron/sync-teams.ts",
     "cron:sync": "tsx src/api/cron/sync-scheduler.ts"
   },
   "keywords": [],

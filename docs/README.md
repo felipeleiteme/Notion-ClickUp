@@ -10,6 +10,9 @@ Automação para sincronizar páginas do Notion em tarefas do ClickUp.
 - `src/core/syncService.ts`: orquestra consulta ao Notion, criação no ClickUp e limpeza da flag.
 - `src/api/cron/sync-notion.ts`: ponto de entrada para rodar o job manualmente.
 - `src/api/cron/sync-scheduler.ts`: agendador em Node que dispara `runSync` periodicamente via `node-cron`.
+- `src/api/cron/sync-teams.ts`: job que monitora o checkbox `[✅ Notificado Teams]` e dispara notificações para o Microsoft Teams.
+- `src/core/teamsNotificationService.ts`: formata as mensagens de conclusão, menciona os responsáveis no Teams e reseta o checkbox.
+- `src/core/teamsSyncJob.ts`: encapsula a lógica de sincronização com o Teams para reuso em scripts/cron.
 
 ## Requisitos
 - Node.js 18+ e npm instalados.
@@ -18,9 +21,14 @@ Automação para sincronizar páginas do Notion em tarefas do ClickUp.
   - `NOTION_DATABASE_ID`
   - `CLICKUP_API_TOKEN`
   - `CLICKUP_LIST_ID`
+  - `TEAMS_WEBHOOK_URL`
   - `SYNC_CRON_EXPRESSION` (opcional - padrão `*/10 * * * *`)
   - `SYNC_TIMEZONE` (opcional - ex: `America/Sao_Paulo`)
   - `SYNC_RUN_ON_BOOT` (opcional - `true` por padrão)
+  - `TEAMS_SYNC_ENABLED` (opcional - `true` por padrão)
+  - `TEAMS_SYNC_CRON_EXPRESSION` (opcional - padrão `*/10 * * * *`)
+  - `TEAMS_SYNC_TIMEZONE` (opcional)
+  - `TEAMS_SYNC_RUN_ON_BOOT` (opcional - `true` por padrão)
 - Banco do Notion com a propriedade rich_text **`ClickUp Task ID`** para armazenar o identificador da tarefa sincronizada. O serviço preenche e reutiliza esse valor automaticamente.
 
 Crie um arquivo `.env` na raiz e adicione:
@@ -30,10 +38,15 @@ NOTION_API_KEY=coloque_sua_chave_aqui
 NOTION_DATABASE_ID=coloque_seu_database_id_aqui
 CLICKUP_API_TOKEN=coloque_seu_token_aqui
 CLICKUP_LIST_ID=coloque_seu_list_id_aqui
+TEAMS_WEBHOOK_URL=https://sua-org.webhook.office.com/webhookb2/...
 # Opcional: agendador local (cron)
 SYNC_CRON_EXPRESSION=* * * * *
 SYNC_TIMEZONE=America/Sao_Paulo
 SYNC_RUN_ON_BOOT=true
+TEAMS_SYNC_ENABLED=true
+TEAMS_SYNC_CRON_EXPRESSION=* * * * *
+TEAMS_SYNC_TIMEZONE=America/Sao_Paulo
+TEAMS_SYNC_RUN_ON_BOOT=true
 ```
 
 ## Desenvolvimento
@@ -52,16 +65,21 @@ SYNC_RUN_ON_BOOT=true
    cd "/Users/Felipe/Documents/Projetos/Integrações/Notion-ClickUp"
   npm run cron:sync
    ```
-   - Mantém o processo ativo, acionando `runSync` conforme `SYNC_CRON_EXPRESSION` (padrão: a cada 1 min).
-   - Respeita `SYNC_TIMEZONE` e evita execuções concorrentes.
+   - Mantém o processo ativo, acionando o fluxo do ClickUp conforme `SYNC_CRON_EXPRESSION` e, se habilitado (`TEAMS_SYNC_ENABLED=true`), o fluxo do Teams conforme `TEAMS_SYNC_CRON_EXPRESSION`.
+   - Respeita cada `TIMEZONE` configurado e evita execuções concorrentes para ambos os jobs.
    - Se a página já possui valor em **`ClickUp Task ID`**, o job atualiza a tarefa existente no ClickUp em vez de criar uma nova.
+4. Disparar notificações do Teams manualmente (opcional):
+   ```bash
+   cd "/Users/Felipe/Documents/Projetos/Integrações/Notion-ClickUp"
+   npm run sync:teams
+   ```
+   - Consulta páginas com **`[✅ Notificado Teams]`** marcado, envia mensagem para o Teams e limpa o checkbox após o envio para evitar duplicações.
 
 
 ## Configuração do Notion
 - Banco deve expor a propriedade de checkbox **`[➡️ Enviar p/ ClickUp]`** (true → envia).
 - Adicione uma coluna *Rich text* chamada **`ClickUp Task ID`** (sem preencher manualmente). Ela será populada com o ID retornado pelo ClickUp e reutilizada para atualizações.
-- Garanta que existam as colunas **`[Sync Error]`** (Checkbox) e **`[Sync Error Message]`** (Rich text). Não precisa criar manualmente caso não exista: o script valida o schema do banco antes da consulta e cria automaticamente essas propriedades, mas é recomendável posicioná-las manualmente na view para acompanhar falhas.
-  - ⚠️ Não utilize tipos `Unique ID`, `Número` ou `Fórmula` para esse campo. Se já existir uma coluna com outro tipo, crie uma nova *Rich text* com o mesmo nome e remova a antiga para evitar duplicações.
+- ⚠️ Para a coluna **`ClickUp Task ID`**, não utilize tipos `Unique ID`, `Número` ou `Fórmula`. Se já existir uma coluna com outro tipo, crie uma nova *Rich text* com o mesmo nome e remova a antiga para evitar duplicações.
 - Coluna de título: `Nome` (PT) ou `Name` (EN).
 - Coluna de projeto (select ou multi-select): `Projetos`, `Projetos do Notion`, `Projeto` ou `Projects`. O primeiro valor será usado para compor o título no formato `Task :: Projeto | Nome`.
 - Coluna de responsável pode ser do tipo pessoas ou multi-select com nomes/e-mails. Suportamos chaves: `Dono`, `Donos`, `Owner`, `Responsável`, `Responsaveis`, `Responsáveis`, `Assignee`, `Assignees`. Caso use outro nome/valor, basta incluir no `userMap`.
@@ -70,12 +88,10 @@ SYNC_RUN_ON_BOOT=true
   - `Deploy` → `deploy`
   - `Concluído` → `done`
   - Demais valores caem no status padrão `in progress`.
+- Para notificações do Teams, adicione a coluna de checkbox **`[✅ Notificado Teams]`**. Quando marcada manualmente, o job `sync-teams` enviará a mensagem para o canal configurado, mencionará Andreia e Gisele e redefinirá o checkbox para `false` após o envio.
 
 ### Comportamento em caso de falhas na sync
-- Se ocorrer erro ao criar/atualizar a tarefa no ClickUp, o processo:
-  - Desmarca **`[➡️ Enviar p/ ClickUp]`** para impedir novas tentativas automáticas.
-  - Marca **`[Sync Error]`** como `true`.
-  - Registra em **`[Sync Error Message]`** uma versão truncada (100 caracteres) da mensagem retornada.
+- Se ocorrer erro ao criar/atualizar a tarefa no ClickUp, o processo apenas desmarca **`[➡️ Enviar p/ ClickUp]`** para impedir novas tentativas automáticas.
 - Corrija a causa da falha (por exemplo, ID inválido no ClickUp) e marque novamente **`[➡️ Enviar p/ ClickUp]`** para reprocessar.
 
 ## Automação (GitHub Actions)

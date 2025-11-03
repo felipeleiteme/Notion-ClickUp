@@ -1,11 +1,8 @@
 // src/mappers/notionToClickup.ts
 import type {
-  MultiSelectPropertyValue,
   PageObjectResponse,
-  PeoplePropertyValue,
-  SelectPropertyValue,
-  StatusPropertyValue,
-  TitlePropertyValue,
+  PartialUserObjectResponse,
+  UserObjectResponse,
 } from '@notionhq/client/build/src/api-endpoints';
 import { NOTION_TO_CLICKUP_USER_MAP } from './userMap';
 
@@ -37,6 +34,8 @@ const STATUS_PROPERTY_KEYS = [
   'Status (Notion)',
 ] as const;
 
+const TITLE_PROPERTY_KEYS = ['Nome', 'Name'] as const;
+
 const STATUS_MAP: Record<string, string> = {
   'QA (WIP 3)': 'qa',
   Deploy: 'deploy',
@@ -50,34 +49,121 @@ interface ClickUpTaskPayload {
   priority?: number;
 }
 
-type OwnerProperty = PeoplePropertyValue | MultiSelectPropertyValue;
-type ProjectProperty = SelectPropertyValue | MultiSelectPropertyValue;
-type StatusProperty =
-  | StatusPropertyValue
-  | SelectPropertyValue
-  | MultiSelectPropertyValue;
+type NotionPropertyValue = PageObjectResponse['properties'][string];
+type PeopleProperty = Extract<NotionPropertyValue, { type: 'people' }>;
+type MultiSelectProperty = Extract<NotionPropertyValue, { type: 'multi_select' }>;
+type SelectProperty = Extract<NotionPropertyValue, { type: 'select' }>;
+type StatusProperty = Extract<
+  NotionPropertyValue,
+  { type: 'status' } | { type: 'select' } | { type: 'multi_select' }
+>;
+type TitleProperty = Extract<NotionPropertyValue, { type: 'title' }>;
 
-const isOwnerProperty = (property: unknown): property is OwnerProperty =>
-  !!property &&
-  typeof property === 'object' &&
-  'type' in property &&
-  ((property as PeoplePropertyValue).type === 'people' ||
-    (property as MultiSelectPropertyValue).type === 'multi_select');
+type OwnerProperty = PeopleProperty | MultiSelectProperty;
+type ProjectProperty = SelectProperty | MultiSelectProperty;
 
-const isProjectProperty = (property: unknown): property is ProjectProperty =>
+const isOwnerProperty = (
+  property: NotionPropertyValue | undefined,
+): property is OwnerProperty =>
   !!property &&
-  typeof property === 'object' &&
-  'type' in property &&
-  ((property as SelectPropertyValue).type === 'select' ||
-    (property as MultiSelectPropertyValue).type === 'multi_select');
+  (property.type === 'people' || property.type === 'multi_select');
 
-const isStatusProperty = (property: unknown): property is StatusProperty =>
+const isProjectProperty = (
+  property: NotionPropertyValue | undefined,
+): property is ProjectProperty =>
   !!property &&
-  typeof property === 'object' &&
-  'type' in property &&
-  ((property as StatusPropertyValue).type === 'status' ||
-    (property as SelectPropertyValue).type === 'select' ||
-    (property as MultiSelectPropertyValue).type === 'multi_select');
+  (property.type === 'select' || property.type === 'multi_select');
+
+const isStatusProperty = (
+  property: NotionPropertyValue | undefined,
+): property is StatusProperty =>
+  !!property &&
+  (property.type === 'status' ||
+    property.type === 'select' ||
+    property.type === 'multi_select');
+
+const isTitleProperty = (
+  property: NotionPropertyValue | undefined,
+): property is TitleProperty => !!property && property.type === 'title';
+
+const getEmailFromUser = (
+  user: PartialUserObjectResponse | UserObjectResponse,
+): string | undefined => {
+  if ('type' in user && user.type === 'person') {
+    return user.person?.email ?? undefined;
+  }
+  return undefined;
+};
+
+export const getOwnerProperty = (
+  page: PageObjectResponse,
+): OwnerProperty | undefined => {
+  const ownerPropertyFromKeys = OWNER_PROPERTY_KEYS.reduce<
+    OwnerProperty | undefined
+  >((found, key) => {
+    if (found) {
+      return found;
+    }
+
+    const property = page.properties[key];
+    return isOwnerProperty(property) ? property : undefined;
+  }, undefined);
+
+  if (ownerPropertyFromKeys) {
+    return ownerPropertyFromKeys;
+  }
+
+  const fallbackOwnerProperty = Object.values(page.properties).find(
+    (property): property is OwnerProperty => isOwnerProperty(property),
+  );
+
+  if (!fallbackOwnerProperty) {
+    console.warn(`Nenhum responsável encontrado para a página ${page.id}.`);
+    return undefined;
+  }
+
+  console.warn(
+    `Utilizando a primeira propriedade de responsável encontrada na página ${page.id}. Verifique se está correto.`,
+  );
+
+  return fallbackOwnerProperty;
+};
+
+export const getNotionUserKeys = (property?: OwnerProperty): string[] => {
+  if (!property) {
+    return [];
+  }
+
+  if (property.type === 'people') {
+    return property.people
+      .map((person) => {
+        const notionEmail = getEmailFromUser(person);
+
+        if (!notionEmail) {
+          console.warn('Pessoa na propriedade de responsável sem e-mail.');
+        }
+
+        return notionEmail;
+      })
+      .filter((email): email is string => typeof email === 'string');
+  }
+
+  if (property.type === 'multi_select') {
+    const labels = property.multi_select
+      .map((option) => option.name)
+      .filter((name): name is string => typeof name === 'string' && !!name);
+
+    if (labels.length === 0) {
+      console.warn(
+        'Propriedade de multi-select encontrada, mas sem valores preenchidos.',
+      );
+    }
+
+    return labels;
+  }
+
+  return [];
+};
 
 const resolveClickUpAssignees = (keys: string[]): number[] | undefined => {
   const mappedIds = keys
@@ -87,13 +173,21 @@ const resolveClickUpAssignees = (keys: string[]): number[] | undefined => {
         return undefined;
       }
 
-      const clickupUserId = NOTION_TO_CLICKUP_USER_MAP[trimmedKey];
+      const userMapping = NOTION_TO_CLICKUP_USER_MAP[trimmedKey];
+      const clickupUserId = userMapping?.clickupId;
 
       if (typeof clickupUserId === 'number') {
         console.log(
           `Mapeando identificador ${trimmedKey} para ClickUp ID ${clickupUserId}`,
         );
         return clickupUserId;
+      }
+
+      if (userMapping) {
+        console.warn(
+          `Identificador ${trimmedKey} mapeado, mas sem ClickUp ID configurado. Responsável não será atribuído.`,
+        );
+        return undefined;
       }
 
       console.warn(
@@ -109,42 +203,13 @@ const resolveClickUpAssignees = (keys: string[]): number[] | undefined => {
 const getAssigneesFromProperty = (
   property?: OwnerProperty,
 ): number[] | undefined => {
-  if (!property) {
+  const notionKeys = getNotionUserKeys(property);
+
+  if (notionKeys.length === 0) {
     return undefined;
   }
 
-  if (property.type === 'people') {
-    const emails = property.people
-      .map((person) => {
-        const notionEmail = person?.person?.email;
-
-        if (!notionEmail) {
-          console.warn('Pessoa na propriedade de responsável sem e-mail.');
-        }
-
-        return notionEmail ?? undefined;
-      })
-      .filter((email): email is string => typeof email === 'string');
-
-    return emails.length > 0 ? resolveClickUpAssignees(emails) : undefined;
-  }
-
-  if (property.type === 'multi_select') {
-    const labels = property.multi_select
-      .map((option) => option?.name)
-      .filter((name): name is string => typeof name === 'string' && !!name);
-
-    if (labels.length === 0) {
-      console.warn(
-        'Propriedade de multi-select encontrada, mas sem valores preenchidos.',
-      );
-      return undefined;
-    }
-
-    return resolveClickUpAssignees(labels);
-  }
-
-  return undefined;
+  return resolveClickUpAssignees(notionKeys);
 };
 
 const getProjectLabel = (page: PageObjectResponse): string | undefined => {
@@ -172,11 +237,20 @@ const getProjectLabel = (page: PageObjectResponse): string | undefined => {
   return undefined;
 };
 
-const getFormattedTaskName = (
-  page: PageObjectResponse,
-  titleProperty?: TitlePropertyValue,
-): string => {
+const getTitleProperty = (page: PageObjectResponse): TitleProperty | undefined => {
+  for (const key of TITLE_PROPERTY_KEYS) {
+    const property = page.properties[key];
+    if (isTitleProperty(property)) {
+      return property;
+    }
+  }
+
+  return Object.values(page.properties).find(isTitleProperty);
+};
+
+export const getFormattedTaskName = (page: PageObjectResponse): string => {
   const projectLabel = getProjectLabel(page);
+  const titleProperty = getTitleProperty(page);
 
   let taskName = DEFAULT_TITLE_PREFIX;
 
@@ -184,7 +258,7 @@ const getFormattedTaskName = (
     taskName = `${taskName} ${projectLabel}`;
   }
 
-  if (!titleProperty || titleProperty.type !== 'title') {
+  if (!titleProperty) {
     return `${taskName} | Sem título`;
   }
 
@@ -251,36 +325,10 @@ export const mapNotionPageToClickupPayload = (
 ): ClickUpTaskPayload => {
   console.log('Mapeando página:', page.id);
 
-  const titleProperty = (page.properties.Nome ??
-    page.properties.Name) as TitlePropertyValue | undefined;
-
-  const ownerPropertyFromKeys = OWNER_PROPERTY_KEYS.reduce<
-    OwnerProperty | undefined
-  >((found, key) => {
-    if (found) {
-      return found;
-    }
-
-    const property = page.properties[key];
-    return isOwnerProperty(property) ? property : undefined;
-  }, undefined);
-
-  const ownerProperty =
-    ownerPropertyFromKeys ??
-    (Object.values(page.properties).find((property) =>
-      isOwnerProperty(property),
-    ) as OwnerProperty | undefined);
-
-  if (!ownerProperty) {
-    console.warn(`Nenhum responsável encontrado para a página ${page.id}.`);
-  } else if (!ownerPropertyFromKeys) {
-    console.warn(
-      `Utilizando a primeira propriedade de responsável encontrada na página ${page.id}. Verifique se está correto.`,
-    );
-  }
+  const ownerProperty = getOwnerProperty(page);
 
   const payload: ClickUpTaskPayload = {
-    name: getFormattedTaskName(page, titleProperty),
+    name: getFormattedTaskName(page),
     status: getClickUpStatus(page),
     priority: 3,
   };

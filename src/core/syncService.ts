@@ -2,6 +2,8 @@ import 'dotenv/config';
 import type {
   PageObjectResponse,
   PartialPageObjectResponse,
+  DatabaseObjectResponse,
+  PartialDatabaseObjectResponse,
 } from '@notionhq/client/build/src/api-endpoints';
 import { notion } from '../clients/notion';
 import { clickup } from '../clients/clickup';
@@ -9,8 +11,6 @@ import { mapNotionPageToClickupPayload } from '../mappers/notionToClickup';
 
 const NOTION_FLAG_PROPERTY = '[➡️ Enviar p/ ClickUp]';
 const CLICKUP_TASK_ID_PROPERTY = 'ClickUp Task ID';
-const NOTION_SYNC_ERROR_PROPERTY = '[Sync Error]';
-const NOTION_SYNC_ERROR_MESSAGE_PROPERTY = '[Sync Error Message]';
 
 const assertEnv = (value: string | undefined, key: string): string => {
   if (!value) {
@@ -21,7 +21,11 @@ const assertEnv = (value: string | undefined, key: string): string => {
 };
 
 const isFullPageObjectResponse = (
-  page: PageObjectResponse | PartialPageObjectResponse,
+  page:
+    | PageObjectResponse
+    | PartialPageObjectResponse
+    | PartialDatabaseObjectResponse
+    | DatabaseObjectResponse,
 ): page is PageObjectResponse => page.object === 'page';
 
 const getClickUpTaskIdFromPage = (
@@ -115,17 +119,6 @@ const updateNotionPageAfterSync = async (
     [NOTION_FLAG_PROPERTY]: {
       checkbox: false,
     },
-    [NOTION_SYNC_ERROR_PROPERTY]: {
-      checkbox: false,
-    },
-    [NOTION_SYNC_ERROR_MESSAGE_PROPERTY]: {
-      rich_text: [
-        {
-          type: 'text' as const,
-          text: { content: '' },
-        },
-      ],
-    },
   };
 
   if (taskId) {
@@ -141,35 +134,6 @@ const updateNotionPageAfterSync = async (
   });
 };
 
-const ensureSyncErrorPropertiesExist = async (databaseId: string) => {
-  const database = await notion.databases.retrieve({
-    database_id: databaseId,
-  });
-
-  const missingProperties: Record<string, any> = {};
-
-  if (!database.properties[NOTION_SYNC_ERROR_PROPERTY]) {
-    missingProperties[NOTION_SYNC_ERROR_PROPERTY] = {
-      checkbox: {},
-    };
-  }
-
-  if (!database.properties[NOTION_SYNC_ERROR_MESSAGE_PROPERTY]) {
-    missingProperties[NOTION_SYNC_ERROR_MESSAGE_PROPERTY] = {
-      rich_text: {},
-    };
-  }
-
-  if (Object.keys(missingProperties).length === 0) {
-    return;
-  }
-
-  await notion.databases.update({
-    database_id: databaseId,
-    properties: missingProperties,
-  });
-};
-
 export async function runSync(): Promise<void> {
   const notionDatabaseId = assertEnv(
     process.env.NOTION_DATABASE_ID,
@@ -181,8 +145,6 @@ export async function runSync(): Promise<void> {
   );
 
   console.log('Buscando páginas no Notion...');
-
-  await ensureSyncErrorPropertiesExist(notionDatabaseId);
 
   const response = await notion.databases.query({
     database_id: notionDatabaseId,
@@ -234,22 +196,10 @@ export async function runSync(): Promise<void> {
       console.error(`Falha ao sincronizar página ${page.id}`, error);
 
       try {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-
         await notion.pages.update({
           page_id: page.id,
           properties: {
             [NOTION_FLAG_PROPERTY]: { checkbox: false },
-            [NOTION_SYNC_ERROR_PROPERTY]: { checkbox: true },
-            [NOTION_SYNC_ERROR_MESSAGE_PROPERTY]: {
-              rich_text: [
-                {
-                  type: 'text' as const,
-                  text: { content: errorMessage.substring(0, 100) },
-                },
-              ],
-            },
           },
         });
       } catch (notifyError) {
