@@ -8,7 +8,8 @@ Automação para sincronizar páginas do Notion em tarefas do ClickUp.
 - `src/mappers/notionToClickup.ts`: traduz uma página do Notion para payload de criação de tarefa (nome, status, prioridade e responsáveis).
 - `src/mappers/userMap.ts`: dicionário de usuários (Notion → ClickUp) usado para atribuir responsáveis.
 - `src/core/syncService.ts`: orquestra consulta ao Notion, criação no ClickUp e limpeza da flag.
-- `src/api/cron/sync-notion.ts`: ponto de entrada para rodar o job manualmente ou via cron.
+- `src/api/cron/sync-notion.ts`: ponto de entrada para rodar o job manualmente.
+- `src/api/cron/sync-scheduler.ts`: agendador em Node que dispara `runSync` periodicamente via `node-cron`.
 
 ## Requisitos
 - Node.js 18+ e npm instalados.
@@ -17,6 +18,9 @@ Automação para sincronizar páginas do Notion em tarefas do ClickUp.
   - `NOTION_DATABASE_ID`
   - `CLICKUP_API_TOKEN`
   - `CLICKUP_LIST_ID`
+  - `SYNC_CRON_EXPRESSION` (opcional - padrão `*/10 * * * *`)
+  - `SYNC_TIMEZONE` (opcional - ex: `America/Sao_Paulo`)
+  - `SYNC_RUN_ON_BOOT` (opcional - `true` por padrão)
 
 Crie um arquivo `.env` na raiz e adicione:
 
@@ -36,6 +40,13 @@ CLICKUP_LIST_ID=coloque_seu_list_id_aqui
    ```bash
    npm run sync
    ```
+3. Execute o cron local (opcional):
+   ```bash
+   npm run cron:sync
+   ```
+   - Usa `node-cron` com a expressão de `SYNC_CRON_EXPRESSION`.
+   - Evita execuções concorrentes e registra logs a cada disparo.
+
 
 ## Configuração do Notion
 - Banco deve expor a propriedade de checkbox **`[➡️ Enviar p/ ClickUp]`** (true → envia).
