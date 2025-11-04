@@ -7,19 +7,22 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "sync": "tsx src/api/cron/sync-notion.ts",
     "sync:teams": "tsx src/api/cron/sync-teams.ts",
-    "cron:sync": "tsx src/api/cron/sync-scheduler.ts"
+    "cron:sync": "tsx src/api/cron/sync-scheduler.ts",
+    "build:web": "esbuild src/web/main.ts --bundle --format=esm --target=es2017 --outfile=public/main.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@notionhq/client": "^2.2.10",
+    "@vercel/speed-insights": "^1.2.0",
     "axios": "^1.13.1",
     "dotenv": "^17.2.3",
     "node-cron": "^4.2.1"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",
+    "esbuild": "^0.25.12",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }

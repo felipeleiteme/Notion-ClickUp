@@ -22,11 +22,11 @@ Automação para sincronizar páginas do Notion em tarefas do ClickUp.
   - `CLICKUP_API_TOKEN`
   - `CLICKUP_LIST_ID`
   - `TEAMS_WEBHOOK_URL`
-  - `SYNC_CRON_EXPRESSION` (opcional - padrão `*/10 * * * *`)
+  - `SYNC_CRON_EXPRESSION` (opcional - fallback `*/10 * * * *` se não definido)
   - `SYNC_TIMEZONE` (opcional - ex: `America/Sao_Paulo`)
   - `SYNC_RUN_ON_BOOT` (opcional - `true` por padrão)
   - `TEAMS_SYNC_ENABLED` (opcional - `true` por padrão)
-  - `TEAMS_SYNC_CRON_EXPRESSION` (opcional - padrão `*/10 * * * *`)
+  - `TEAMS_SYNC_CRON_EXPRESSION` (opcional - fallback `*/10 * * * *` se não definido)
   - `TEAMS_SYNC_TIMEZONE` (opcional)
   - `TEAMS_SYNC_RUN_ON_BOOT` (opcional - `true` por padrão)
 - Banco do Notion com a propriedade rich_text **`ClickUp Task ID`** para armazenar o identificador da tarefa sincronizada. O serviço preenche e reutiliza esse valor automaticamente.
@@ -76,6 +76,11 @@ TEAMS_SYNC_RUN_ON_BOOT=true
    ```
    - Consulta páginas com **`[✅ Notificado Teams]`** marcado, envia mensagem para o Teams e limpa o checkbox após o envio para evitar duplicações.
 
+## Speed Insights
+- A landing page está em `public/index.html` e injeta automaticamente o Vercel Speed Insights via `public/main.js`.
+- Sempre que ajustar `src/web/main.ts`, execute `npm run build:web` para gerar o bundle antes do deploy.
+- O bundle é commitado no repositório para que a Vercel sirva o arquivo estático sem etapa de build adicional.
+
 
 ## Configuração do Notion
 - Banco deve expor a propriedade de checkbox **`[➡️ Enviar p/ ClickUp]`** (true → envia).
@@ -107,7 +112,7 @@ TEAMS_SYNC_RUN_ON_BOOT=true
 2. Aponte o projeto local para a Vercel com `vercel link` (use a opção *Import Existing Project* se o projeto ainda não existir).
 3. Defina as variáveis de ambiente (todas as usadas no `.env`) com `vercel env add <NOME>` ou via dashboard.
 4. Faça o primeiro deploy manual executando `vercel --prod` (o CLI usará `vercel.json` e criará as functions `api/sync` e `api/sync-teams` automaticamente).
-5. Em contas Hobby os cron jobs ficam limitados a uma execução diária, então `vercel.json` agenda ambos para `0 3 * * *` (03h00 UTC). Ajuste a expressão se fizer upgrade para o plano Pro. Para desativar o Teams, defina `TEAMS_SYNC_ENABLED=false` nas variáveis de ambiente ou remova o cron correspondente.
+5. Em contas Hobby os cron jobs ficam limitados a uma execução diária, então `vercel.json` agenda ambos para `0 3 * * *` (03h00 UTC). Ajuste a expressão se fizer upgrade para o plano Pro. Para desativar o Teams, defina `TEAMS_SYNC_ENABLED=false` nas variáveis de ambiente ou remova o cron correspondente. Após o deploy, valide acessando `https://<seu-domínio>/api/sync` (e `/api/sync-teams`) para verificar a resposta `{ ok: true }`.
 
 ## Estrutura Próxima
 - Adicionar testes unitários/mocks para o serviço de sincronização.
