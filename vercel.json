@@ -1,13 +1,5 @@
 {
   "version": 2,
-  "functions": {
-    "api/sync.ts": {
-      "runtime": "nodejs20.x"
-    },
-    "api/sync-teams.ts": {
-      "runtime": "nodejs20.x"
-    }
-  },
   "crons": [
     {
       "path": "/api/sync",
