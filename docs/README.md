@@ -39,15 +39,16 @@ NOTION_DATABASE_ID=coloque_seu_database_id_aqui
 CLICKUP_API_TOKEN=coloque_seu_token_aqui
 CLICKUP_LIST_ID=coloque_seu_list_id_aqui
 TEAMS_WEBHOOK_URL=https://sua-org.webhook.office.com/webhookb2/...
-# Opcional: agendador local (cron)
-SYNC_CRON_EXPRESSION=*/10 * * * *
+# Opcional: agendador local (cron) - exemplo rodando a cada minuto
+SYNC_CRON_EXPRESSION=* * * * *
 SYNC_TIMEZONE=America/Sao_Paulo
 SYNC_RUN_ON_BOOT=true
 TEAMS_SYNC_ENABLED=true
-TEAMS_SYNC_CRON_EXPRESSION=*/10 * * * *
+TEAMS_SYNC_CRON_EXPRESSION=* * * * *
 TEAMS_SYNC_TIMEZONE=America/Sao_Paulo
 TEAMS_SYNC_RUN_ON_BOOT=true
 ```
+> Se você remover as variáveis `SYNC_CRON_EXPRESSION` e `TEAMS_SYNC_CRON_EXPRESSION`, o serviço usa o fallback padrão de 10 em 10 minutos.
 
 ## Desenvolvimento
 1. Instale as dependências:
@@ -106,7 +107,7 @@ TEAMS_SYNC_RUN_ON_BOOT=true
 2. Aponte o projeto local para a Vercel com `vercel link` (use a opção *Import Existing Project* se o projeto ainda não existir).
 3. Defina as variáveis de ambiente (todas as usadas no `.env`) com `vercel env add <NOME>` ou via dashboard.
 4. Faça o primeiro deploy manual executando `vercel --prod` (o CLI usará `vercel.json` e criará as functions `api/sync` e `api/sync-teams` automaticamente).
-5. Os cron jobs definidos em `vercel.json` rodarão a cada 10 minutos. Para desativar o Teams, ajuste `TEAMS_SYNC_ENABLED=false` nas variáveis de ambiente ou remova o cron correspondente do arquivo.
+5. Em contas Hobby os cron jobs ficam limitados a uma execução diária, então `vercel.json` agenda ambos para `0 3 * * *` (03h00 UTC). Ajuste a expressão se fizer upgrade para o plano Pro. Para desativar o Teams, defina `TEAMS_SYNC_ENABLED=false` nas variáveis de ambiente ou remova o cron correspondente.
 
 ## Estrutura Próxima
 - Adicionar testes unitários/mocks para o serviço de sincronização.
