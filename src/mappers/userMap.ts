@@ -58,6 +58,18 @@ export const NOTION_TO_CLICKUP_USER_MAP: Record<string, UserMapping> = {
     clickupId: 49151715,
     teamsUpn: 'matheus.gois@cashforce.com.br',
   },
+  'Matheus H': {
+    clickupId: 49151715,
+    teamsUpn: 'matheus.gois@cashforce.com.br',
+  },
+  'Matheus H. Gois': {
+    clickupId: 49151715,
+    teamsUpn: 'matheus.gois@cashforce.com.br',
+  },
+  'Matheus H. Góis': {
+    clickupId: 49151715,
+    teamsUpn: 'matheus.gois@cashforce.com.br',
+  },
   'Mychael Jales': {
     clickupId: 49151714,
     teamsUpn: 'mychael.jales@cashforce.com.br',
