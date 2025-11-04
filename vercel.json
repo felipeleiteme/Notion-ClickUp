@@ -1,0 +1,20 @@
+{
+  "functions": {
+    "api/sync.ts": {
+      "runtime": "nodejs20.x"
+    },
+    "api/sync-teams.ts": {
+      "runtime": "nodejs20.x"
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/sync",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/sync-teams",
+      "schedule": "*/10 * * * *"
+    }
+  ]
+}

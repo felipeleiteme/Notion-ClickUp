@@ -40,11 +40,11 @@ CLICKUP_API_TOKEN=coloque_seu_token_aqui
 CLICKUP_LIST_ID=coloque_seu_list_id_aqui
 TEAMS_WEBHOOK_URL=https://sua-org.webhook.office.com/webhookb2/...
 # Opcional: agendador local (cron)
-SYNC_CRON_EXPRESSION=* * * * *
+SYNC_CRON_EXPRESSION=*/10 * * * *
 SYNC_TIMEZONE=America/Sao_Paulo
 SYNC_RUN_ON_BOOT=true
 TEAMS_SYNC_ENABLED=true
-TEAMS_SYNC_CRON_EXPRESSION=* * * * *
+TEAMS_SYNC_CRON_EXPRESSION=*/10 * * * *
 TEAMS_SYNC_TIMEZONE=America/Sao_Paulo
 TEAMS_SYNC_RUN_ON_BOOT=true
 ```
@@ -100,6 +100,13 @@ TEAMS_SYNC_RUN_ON_BOOT=true
 - Configure os *secrets* `NOTION_API_KEY`, `NOTION_DATABASE_ID`, `CLICKUP_API_TOKEN`, `CLICKUP_LIST_ID` no repositório antes de habilitar o job.
 - Toda execução respeita o valor de **`ClickUp Task ID`**: se existir, o fluxo apenas atualiza a tarefa correspondente e limpa a flag; se estiver vazio, cria a tarefa e armazena o ID.
 - Caso a coluna esteja com tipo diferente de *Rich text*, o workflow irá registrar logs informando o problema e continuará gerando novas tasks. Ajuste o tipo para evitar duplicidades.
+
+## Deploy na Vercel
+1. Instale o CLI (`npm i -g vercel`) e autentique com `vercel login`.
+2. Aponte o projeto local para a Vercel com `vercel link` (use a opção *Import Existing Project* se o projeto ainda não existir).
+3. Defina as variáveis de ambiente (todas as usadas no `.env`) com `vercel env add <NOME>` ou via dashboard.
+4. Faça o primeiro deploy manual executando `vercel --prod` (o CLI usará `vercel.json` e criará as functions `api/sync` e `api/sync-teams` automaticamente).
+5. Os cron jobs definidos em `vercel.json` rodarão a cada 10 minutos. Para desativar o Teams, ajuste `TEAMS_SYNC_ENABLED=false` nas variáveis de ambiente ou remova o cron correspondente do arquivo.
 
 ## Estrutura Próxima
 - Adicionar testes unitários/mocks para o serviço de sincronização.
