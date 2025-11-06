@@ -7,7 +7,10 @@ import type {
 } from '@notionhq/client/build/src/api-endpoints';
 import { notion } from '../clients/notion';
 import { clickup } from '../clients/clickup';
-import { mapNotionPageToClickupPayload } from '../mappers/notionToClickup';
+import {
+  mapNotionPageToClickupPayload,
+  getDescriptionFromPage,
+} from '../mappers/notionToClickup';
 
 const NOTION_FLAG_PROPERTY = '[➡️ Enviar p/ ClickUp]';
 const CLICKUP_TASK_ID_PROPERTY = 'ClickUp Task ID';
@@ -134,6 +137,23 @@ const updateNotionPageAfterSync = async (
   });
 };
 
+const addCommentToClickUpTask = async (
+  taskId: string,
+  comment: string,
+): Promise<void> => {
+  try {
+    await clickup.post(`task/${taskId}/comment`, {
+      comment_text: comment,
+    });
+    console.log(`Comentário adicionado à tarefa ${taskId}.`);
+  } catch (error) {
+    console.error(
+      `Falha ao adicionar comentário à tarefa ${taskId}:`,
+      error,
+    );
+  }
+};
+
 export async function runSync(): Promise<void> {
   const notionDatabaseId = assertEnv(
     process.env.NOTION_DATABASE_ID,
@@ -169,6 +189,7 @@ export async function runSync(): Promise<void> {
 
       const payload = mapNotionPageToClickupPayload(page);
       const existingClickUpTaskId = getClickUpTaskIdFromPage(page);
+      const description = getDescriptionFromPage(page);
 
       if (existingClickUpTaskId) {
         console.log(
@@ -176,6 +197,11 @@ export async function runSync(): Promise<void> {
           payload,
         );
         await clickup.put(`task/${existingClickUpTaskId}`, payload);
+
+        if (description) {
+          await addCommentToClickUpTask(existingClickUpTaskId, description);
+        }
+
         await updateNotionPageAfterSync(page, existingClickUpTaskId);
         continue;
       }
@@ -188,6 +214,10 @@ export async function runSync(): Promise<void> {
           `ID da tarefa criada não retornado para a página ${page.id}. ` +
             'Verifique o payload e permissões da integração.',
         );
+      }
+
+      if (createdTaskId && description) {
+        await addCommentToClickUpTask(createdTaskId, description);
       }
 
       console.log('Atualizando página no Notion...');

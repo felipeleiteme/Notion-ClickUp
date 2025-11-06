@@ -36,6 +36,12 @@ const STATUS_PROPERTY_KEYS = [
 
 const TITLE_PROPERTY_KEYS = ['Nome', 'Name'] as const;
 
+const DESCRIPTION_PROPERTY_KEYS = [
+  'Descrição da necessidade',
+  'Descricao da necessidade',
+  'Description',
+] as const;
+
 const STATUS_MAP: Record<string, string> = {
   'QA (WIP 3)': 'qa',
   Deploy: 'deploy',
@@ -58,6 +64,7 @@ type StatusProperty = Extract<
   { type: 'status' } | { type: 'select' } | { type: 'multi_select' }
 >;
 type TitleProperty = Extract<NotionPropertyValue, { type: 'title' }>;
+type RichTextProperty = Extract<NotionPropertyValue, { type: 'rich_text' }>;
 
 type OwnerProperty = PeopleProperty | MultiSelectProperty;
 type ProjectProperty = SelectProperty | MultiSelectProperty;
@@ -85,6 +92,10 @@ const isStatusProperty = (
 const isTitleProperty = (
   property: NotionPropertyValue | undefined,
 ): property is TitleProperty => !!property && property.type === 'title';
+
+const isRichTextProperty = (
+  property: NotionPropertyValue | undefined,
+): property is RichTextProperty => !!property && property.type === 'rich_text';
 
 const getEmailFromUser = (
   user: PartialUserObjectResponse | UserObjectResponse,
@@ -318,6 +329,32 @@ const getClickUpStatus = (page: PageObjectResponse): string => {
   }
 
   return DEFAULT_CLICKUP_STATUS;
+};
+
+const getDescriptionText = (page: PageObjectResponse): string | undefined => {
+  for (const key of DESCRIPTION_PROPERTY_KEYS) {
+    const property = page.properties[key];
+    if (!isRichTextProperty(property)) {
+      continue;
+    }
+
+    const textContent = property.rich_text
+      .map((rt) => rt.plain_text)
+      .join('')
+      .trim();
+
+    if (textContent) {
+      return textContent;
+    }
+  }
+
+  return undefined;
+};
+
+export const getDescriptionFromPage = (
+  page: PageObjectResponse,
+): string | undefined => {
+  return getDescriptionText(page);
 };
 
 export const mapNotionPageToClickupPayload = (
