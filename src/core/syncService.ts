@@ -11,6 +11,7 @@ import {
   mapNotionPageToClickupPayload,
   getDescriptionFromPage,
 } from '../mappers/notionToClickup';
+import { sendNotifications } from '../services/notificationService';
 
 const NOTION_FLAG_PROPERTY = '[➡️ Enviar p/ ClickUp]';
 const CLICKUP_TASK_ID_PROPERTY = 'ClickUp Task ID';
@@ -183,6 +184,24 @@ export async function runSync(): Promise<void> {
     return;
   }
 
+  const syncedTasks: Array<{
+    taskId: string;
+    taskName: string;
+    action: 'created' | 'updated';
+  }> = [];
+
+  const getTaskName = (page: PageObjectResponse): string => {
+    const titleProperty = Object.values(page.properties).find(
+      (prop) => prop.type === 'title',
+    );
+    if (titleProperty && titleProperty.type === 'title') {
+      return (
+        titleProperty.title.map((t) => t.plain_text).join('') || 'Sem título'
+      );
+    }
+    return 'Sem título';
+  };
+
   for (const page of pages) {
     try {
       console.log('Mapeando página:', page.id);
@@ -203,6 +222,12 @@ export async function runSync(): Promise<void> {
         }
 
         await updateNotionPageAfterSync(page, existingClickUpTaskId);
+
+        syncedTasks.push({
+          taskId: existingClickUpTaskId,
+          taskName: getTaskName(page),
+          action: 'updated',
+        });
         continue;
       }
 
@@ -222,6 +247,14 @@ export async function runSync(): Promise<void> {
 
       console.log('Atualizando página no Notion...');
       await updateNotionPageAfterSync(page, createdTaskId);
+
+      if (createdTaskId) {
+        syncedTasks.push({
+          taskId: createdTaskId,
+          taskName: getTaskName(page),
+          action: 'created',
+        });
+      }
     } catch (error) {
       console.error(`Falha ao sincronizar página ${page.id}`, error);
 
@@ -242,4 +275,6 @@ export async function runSync(): Promise<void> {
   }
 
   console.log('Sincronização concluída.');
+
+  await sendNotifications(syncedTasks);
 }
