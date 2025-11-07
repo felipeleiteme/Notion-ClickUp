@@ -11,6 +11,7 @@ interface NotificationData {
 }
 
 const RECIPIENT_EMAILS = {
+  felipe: process.env.EMAIL_FELIPE,
   andreia: process.env.EMAIL_ANDREIA,
   gisele: process.env.EMAIL_GISELE,
 };
@@ -118,6 +119,10 @@ export async function sendNotifications(
 
   for (const task of tasks) {
     await sendTeamsNotification(task);
+
+    if (RECIPIENT_EMAILS.felipe) {
+      await sendEmailNotification(RECIPIENT_EMAILS.felipe, task);
+    }
 
     if (RECIPIENT_EMAILS.andreia) {
       await sendEmailNotification(RECIPIENT_EMAILS.andreia, task);
