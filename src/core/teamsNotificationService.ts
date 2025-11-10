@@ -2,6 +2,8 @@ import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoint
 import { teams } from '../clients/teams';
 import { getFormattedTaskName } from '../mappers/notionToClickup';
 import { notion } from '../clients/notion';
+import { getClickUpTaskIdFromPage } from './notionProperties';
+import { notifyRecipientsByEmail } from '../services/notificationService';
 
 const ALWAYS_NOTIFY_USERS = [
   {
@@ -150,6 +152,7 @@ export const sendCompletionNotification = async (
   console.log(`Formatando notificação do Teams para página ${page.id}`);
 
   const taskName = getFormattedTaskName(page);
+  const clickUpTaskId = getClickUpTaskIdFromPage(page);
   const mediaUrl = getMediaUrl(page);
   const description = getDescription(page);
 
@@ -163,6 +166,18 @@ export const sendCompletionNotification = async (
   await teams.post('', payload);
 
   console.log(`Notificação do Teams enviada para ${page.id}`);
+
+  if (clickUpTaskId) {
+    await notifyRecipientsByEmail({
+      taskId: clickUpTaskId,
+      taskName,
+      action: 'teams_notified',
+    });
+  } else {
+    console.warn(
+      `Página ${page.id} notificada no Teams sem ClickUp Task ID. Pulei o envio de email.`,
+    );
+  }
 };
 
 export const resetTeamsNotificationFlag = async (pageId: string) => {

@@ -4,19 +4,47 @@ import { teams } from '../clients/teams';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-interface NotificationData {
+export type NotificationAction = 'created' | 'updated' | 'teams_notified';
+
+export interface NotificationData {
   taskId: string;
   taskName: string;
-  action: 'created' | 'updated';
+  action: NotificationAction;
 }
+
+export type ClickUpSyncNotification = Omit<NotificationData, 'action'> & {
+  action: 'created' | 'updated';
+};
 
 const RECIPIENT_EMAILS = {
   felipe: process.env.EMAIL_FELIPE,
   andreia: process.env.EMAIL_ANDREIA,
   gisele: process.env.EMAIL_GISELE,
 };
+const EMAIL_COPY: Record<
+  NotificationAction,
+  { subjectPrefix: string; actionText: string; headline: string }
+> = {
+  created: {
+    subjectPrefix: 'Tarefa criada no ClickUp',
+    actionText: 'criada no ClickUp',
+    headline: 'Uma nova tarefa foi criada no ClickUp',
+  },
+  updated: {
+    subjectPrefix: 'Tarefa atualizada no ClickUp',
+    actionText: 'atualizada no ClickUp',
+    headline: 'Uma tarefa foi atualizada no ClickUp',
+  },
+  teams_notified: {
+    subjectPrefix: 'Tarefa comunicada no Teams',
+    actionText: 'notificada no Microsoft Teams',
+    headline: 'Uma tarefa foi comunicada no Microsoft Teams',
+  },
+};
 
-async function sendTeamsNotification(data: NotificationData): Promise<void> {
+async function sendTeamsNotification(
+  data: ClickUpSyncNotification,
+): Promise<void> {
   if (!process.env.TEAMS_WEBHOOK_URL) {
     console.warn('TEAMS_WEBHOOK_URL não configurado. Notificação para Teams não será enviada.');
     return;
@@ -78,16 +106,16 @@ async function sendEmailNotification(
     return;
   }
 
-  const actionText = data.action === 'created' ? 'criada' : 'atualizada';
-  const subject = `Tarefa ${actionText} no ClickUp: ${data.taskName}`;
+  const copy = EMAIL_COPY[data.action] ?? EMAIL_COPY.updated;
   const clickupUrl = `https://app.clickup.com/t/${data.taskId}`;
+  const subject = `${copy.subjectPrefix}: ${data.taskName}`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #333;">Tarefa ${actionText} no ClickUp</h2>
+      <h2 style="color: #333;">${copy.headline}</h2>
       <p><strong>Nome da tarefa:</strong> ${data.taskName}</p>
       <p><strong>ID da tarefa:</strong> ${data.taskId}</p>
-      <p><strong>Ação:</strong> ${actionText}</p>
+      <p><strong>Ação:</strong> ${copy.actionText}</p>
       <p><a href="${clickupUrl}" style="background-color: #7B68EE; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Ver tarefa no ClickUp</a></p>
       <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
       <p style="color: #666; font-size: 12px;">Esta é uma notificação automática da integração Notion-ClickUp.</p>
@@ -108,28 +136,41 @@ async function sendEmailNotification(
   }
 }
 
+export async function notifyRecipientsByEmail(
+  data: NotificationData,
+): Promise<void> {
+  const recipients = Object.values(RECIPIENT_EMAILS).filter(
+    (email): email is string => typeof email === 'string' && email.length > 0,
+  );
+
+  if (recipients.length === 0) {
+    console.warn(
+      'Nenhum destinatário configurado. Pulei o envio de email da notificação.',
+    );
+    return;
+  }
+
+  for (const recipient of recipients) {
+    await sendEmailNotification(recipient, data);
+  }
+}
+
 export async function sendNotifications(
-  tasks: Array<NotificationData>,
+  tasks: Array<ClickUpSyncNotification>,
+  options?: { sendEmail?: boolean },
 ): Promise<void> {
   if (tasks.length === 0) {
     return;
   }
 
   console.log(`Enviando notificações sobre ${tasks.length} tarefa(s)...`);
+  const shouldSendEmail = options?.sendEmail ?? false;
 
   for (const task of tasks) {
     await sendTeamsNotification(task);
 
-    if (RECIPIENT_EMAILS.felipe) {
-      await sendEmailNotification(RECIPIENT_EMAILS.felipe, task);
-    }
-
-    if (RECIPIENT_EMAILS.andreia) {
-      await sendEmailNotification(RECIPIENT_EMAILS.andreia, task);
-    }
-
-    if (RECIPIENT_EMAILS.gisele) {
-      await sendEmailNotification(RECIPIENT_EMAILS.gisele, task);
+    if (shouldSendEmail) {
+      await notifyRecipientsByEmail(task);
     }
   }
 
